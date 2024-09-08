@@ -96,6 +96,7 @@ export default function MusicPlayer() {
   const [albumHistory, setAlbumHistory] = useState<ReturnType<typeof generateAlbum>[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [rotation, setRotation] = useState(0)
+  const [tooltipContent, setTooltipContent] = useState<{ text: string, x: number, y: number } | null>(null)
 
   const playerRef = useRef<HTMLDivElement>(null)
   const columnRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -114,6 +115,10 @@ export default function MusicPlayer() {
     setNextAlbum(randomAlbums[2])
     setAlbumHistory([randomAlbums[0]])
     setHistoryIndex(0)
+  }, [albumsData])
+
+  useEffect(() => {
+    setFilteredAlbums(albumsData)
   }, [albumsData])
 
   const columnRates = useMemo(() => {
@@ -194,7 +199,7 @@ export default function MusicPlayer() {
   useEffect(() => {
     if (isPlaying) {
       rotationIntervalRef.current = window.setInterval(() => {
-        setRotation(prev => (prev + 1) % 360)
+        setRotation(prev => (prev + 10) % 360) // Increased rotation speed
       }, 50)
     } else if (rotationIntervalRef.current) {
       clearInterval(rotationIntervalRef.current)
@@ -218,7 +223,6 @@ export default function MusicPlayer() {
       setNextAlbum(getRandomAlbum())
       updateAlbumHistory(album)
       setIsPlaying(false)
-      setRotation(0)
       setIsFading(false)
     }, 300)
   }
@@ -319,9 +323,18 @@ export default function MusicPlayer() {
     }
   }
 
-  useEffect(() => {
-    setFilteredAlbums(albumsData)
-  }, [albumsData])
+  const handleTooltipEnter = (e: React.MouseEvent<HTMLButtonElement>, content: string) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    setTooltipContent({
+      text: content,
+      x: rect.left + rect.width / 2,
+      y: rect.top - 10
+    })
+  }
+
+  const handleTooltipLeave = () => {
+    setTooltipContent(null)
+  }
 
   return (
     <div className="relative min-h-screen bg-black overflow-hidden">
@@ -387,9 +400,12 @@ export default function MusicPlayer() {
           <div className="w-88 h-88 bg-gray-800 rounded-full flex items-center justify-center relative overflow-hidden">
             <div
               ref={albumCoverRef}
-              className="absolute inset-0 w-full h-full transition-transform duration-300 ease-in-out"
+              className="absolute inset-0 w-full h-full"
               dangerouslySetInnerHTML={{ __html: currentAlbum?.cover || '' }}
-              style={{ transform: `rotate(${rotation}deg)` }}
+              style={{ 
+                transform: `rotate(${rotation}deg)`,
+                transition: isPlaying ? 'none' : 'transform 0.5s ease-out'
+              }}
             />
             <div className="absolute inset-0 bg-black opacity-60"></div>
             <div
@@ -398,7 +414,8 @@ export default function MusicPlayer() {
                 background: `conic-gradient(#10B981 ${progress}%, transparent ${progress}%)`,
               }}
             ></div>
-            <div className={`w-80 h-80 bg-gray-900 bg-opacity-50 rounded-full flex flex-col items-center justify-center z-10 px-4 transition-opacity duration-300 ${isFading ? 'opacity-0' : 'opacity-100'}`}>
+            <div className="absolute w-5 h-5 bg-black rounded-full z-10"></div>
+            <div className={`w-80 h-80 bg-gray-900 bg-opacity-50 rounded-full flex flex-col items-center justify-center z-20 px-4 transition-opacity duration-300 ${isFading ? 'opacity-0' : 'opacity-100'}`}>
               <h2 
                 id="player_albumname" 
                 className="text-white text-2xl font-bold mb-2 text-center"
@@ -416,12 +433,11 @@ export default function MusicPlayer() {
                 <button 
                   className="text-white p-2 rounded-full bg-black relative group"
                   onClick={handlePrevious}
+                  onMouseEnter={(e) => handleTooltipEnter(e, prevAlbum ? `${prevAlbum.name} - ${prevAlbum.artist}` : 'No previous track')}
+                  onMouseLeave={handleTooltipLeave}
                   aria-label="Previous track"
                 >
                   <SkipBackIcon />
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-white text-black text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap">
-                    {prevAlbum ? `${prevAlbum.name} - ${prevAlbum.artist}` : 'No previous track'}
-                  </div>
                 </button>
                 <button 
                   className="text-white p-3 rounded-full bg-green-500 flex items-center justify-center w-12 h-12 hover:bg-green-600 transition-colors duration-300 ease-in-out" 
@@ -433,12 +449,11 @@ export default function MusicPlayer() {
                 <button 
                   className="text-white p-2 rounded-full bg-black relative group"
                   onClick={handleNext}
+                  onMouseEnter={(e) => handleTooltipEnter(e, nextAlbum ? `${nextAlbum.name} - ${nextAlbum.artist}` : 'No next track')}
+                  onMouseLeave={handleTooltipLeave}
                   aria-label="Next track"
                 >
                   <SkipForwardIcon />
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-white text-black text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap">
-                    {nextAlbum ? `${nextAlbum.name} - ${nextAlbum.artist}` : 'No next track'}
-                  </div>
                 </button>
               </div>
             </div>
@@ -449,6 +464,8 @@ export default function MusicPlayer() {
         <button
           onClick={toggleSearch}
           className="bg-white text-black p-3 rounded-full shadow-lg hover:bg-green-500 hover:text-white transition-colors duration-300 ease-in-out"
+          onMouseEnter={(e) => handleTooltipEnter(e, 'Search')}
+          onMouseLeave={handleTooltipLeave}
           aria-label="Toggle search"
         >
           <Search size={24} />
@@ -456,6 +473,8 @@ export default function MusicPlayer() {
         <button
           onClick={shuffleAndReload}
           className="bg-white text-black p-3 rounded-full shadow-lg hover:bg-green-500 hover:text-white transition-colors duration-300 ease-in-out"
+          onMouseEnter={(e) => handleTooltipEnter(e, 'Shuffle albums')}
+          onMouseLeave={handleTooltipLeave}
           aria-label="Shuffle and reload"
         >
           <Shuffle size={24} />
@@ -486,6 +505,18 @@ export default function MusicPlayer() {
               <X size={24} />
             </button>
           </div>
+        </div>
+      )}
+      {tooltipContent && (
+        <div 
+          className="fixed z-50 px-4 py-2 bg-black text-white text-sm rounded-lg pointer-events-none"
+          style={{
+            left: `${tooltipContent.x}px`,
+            top: `${tooltipContent.y}px`,
+            transform: 'translate(-50%, -100%)'
+          }}
+        >
+          {tooltipContent.text}
         </div>
       )}
     </div>
