@@ -1,10 +1,12 @@
+'use client'
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Search, Shuffle, ArrowRight, X, Pause } from 'lucide-react'
+import { Search, Shuffle, ArrowRight, X, Pause, Play } from 'lucide-react'
 
 const TOTAL_ALBUMS = 75
 const ALBUM_GAP = 16
 const PARALLAX_BREAKPOINT = 640
-const LOAD_THRESHOLD = 200
+const LOAD_THRESHOLD = 400
 
 const generateRandomColor = () => {
   return `#${Math.floor(Math.random()*16777215).toString(16)}`
@@ -60,12 +62,6 @@ const generateAlbum = (id: number) => {
   }
 }
 
-const PlayIcon = ({ size = 24 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M8 5v14l11-7z" fill="currentColor" />
-  </svg>
-)
-
 const SkipBackIcon = ({ size = 19 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M19 20L9 12l10-8v16z" fill="currentColor" />
@@ -80,7 +76,7 @@ const SkipForwardIcon = ({ size = 19 }) => (
   </svg>
 )
 
-export default function MusicPlayer() {
+export default function SleeveWall1() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [columnCount, setColumnCount] = useState(5)
@@ -95,15 +91,17 @@ export default function MusicPlayer() {
   const [nextAlbum, setNextAlbum] = useState<ReturnType<typeof generateAlbum> | null>(null)
   const [albumHistory, setAlbumHistory] = useState<ReturnType<typeof generateAlbum>[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
-  const [rotation, setRotation] = useState(0)
   const [tooltipContent, setTooltipContent] = useState<{ text: string, x: number, y: number } | null>(null)
+  const [rotation, setRotation] = useState(0)
+  const [rotationVelocity, setRotationVelocity] = useState(0)
 
   const playerRef = useRef<HTMLDivElement>(null)
   const columnRefs = useRef<(HTMLDivElement | null)[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const albumCoverRef = useRef<HTMLDivElement>(null)
-  const rotationIntervalRef = useRef<number | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
+  const lastUpdateTimeRef = useRef<number>(0)
 
   const initialAlbumsData = useMemo(() => Array.from({ length: TOTAL_ALBUMS }, (_, i) => generateAlbum(i + 1)), [])
   const [albumsData, setAlbumsData] = useState(initialAlbumsData)
@@ -115,7 +113,7 @@ export default function MusicPlayer() {
     setNextAlbum(randomAlbums[2])
     setAlbumHistory([randomAlbums[0]])
     setHistoryIndex(0)
-  }, [albumsData])
+  }, [])
 
   useEffect(() => {
     setFilteredAlbums(albumsData)
@@ -177,11 +175,8 @@ export default function MusicPlayer() {
         if (columnRect.bottom <= viewportHeight + LOAD_THRESHOLD) {
           setAlbumsData(prevData => {
             const columnAlbums = prevData.filter((_, i) => i % columnCount === index)
-            const newColumnAlbums = columnAlbums.map(album => ({
-              ...album,
-              id: `${album.id}_dup`
-            }))
-            return [...prevData, ...newColumnAlbums]
+            const duplicatedAlbums = columnAlbums.map(album => ({...album, id: `${album.id}_dup`}))
+            return [...prevData, ...duplicatedAlbums]
           })
         }
       }
@@ -196,20 +191,35 @@ export default function MusicPlayer() {
     }
   }, [handleScroll])
 
-  useEffect(() => {
-    if (isPlaying) {
-      rotationIntervalRef.current = window.setInterval(() => {
-        setRotation(prev => (prev + 10) % 360) // Increased rotation speed
-      }, 50)
-    } else if (rotationIntervalRef.current) {
-      clearInterval(rotationIntervalRef.current)
+  const updateRotation = useCallback((timestamp: number) => {
+    if (!lastUpdateTimeRef.current) {
+      lastUpdateTimeRef.current = timestamp
     }
+
+    const deltaTime = timestamp - lastUpdateTimeRef.current
+    lastUpdateTimeRef.current = timestamp
+
+    if (isPlaying) {
+      setRotationVelocity(36) // 360 degrees per second
+    } else {
+      setRotationVelocity(prev => Math.max(0, prev - (deltaTime / 300) * 36)) // Decelerate over 300ms
+    }
+
+    setRotation(prev => (prev + rotationVelocity * (deltaTime / 1000)) % 360)
+
+    if (rotationVelocity > 0 || isPlaying) {
+      animationFrameRef.current = requestAnimationFrame(updateRotation)
+    }
+  }, [isPlaying, rotationVelocity])
+
+  useEffect(() => {
+    animationFrameRef.current = requestAnimationFrame(updateRotation)
     return () => {
-      if (rotationIntervalRef.current) {
-        clearInterval(rotationIntervalRef.current)
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
       }
     }
-  }, [isPlaying])
+  }, [isPlaying, updateRotation])
 
   const togglePlay = () => {
     setIsPlaying(!isPlaying)
@@ -223,6 +233,8 @@ export default function MusicPlayer() {
       setNextAlbum(getRandomAlbum())
       updateAlbumHistory(album)
       setIsPlaying(false)
+      setRotation(0)
+      setRotationVelocity(0)
       setIsFading(false)
     }, 300)
   }
@@ -272,6 +284,8 @@ export default function MusicPlayer() {
       setCurrentAlbum(prevHistoryAlbum)
       setPrevAlbum(albumHistory[historyIndex - 2] || getRandomAlbum())
       setNextAlbum(currentAlbum)
+      setRotation(0)
+      setRotationVelocity(0)
     }
   }
 
@@ -289,6 +303,8 @@ export default function MusicPlayer() {
       setNextAlbum(getRandomAlbum())
       updateAlbumHistory(newNextAlbum)
     }
+    setRotation(0)
+    setRotationVelocity(0)
   }
 
   const toggleSearch = () => {
@@ -328,7 +344,7 @@ export default function MusicPlayer() {
     setTooltipContent({
       text: content,
       x: rect.left + rect.width / 2,
-      y: rect.top - 10
+      y: rect.bottom + 10
     })
   }
 
@@ -338,16 +354,6 @@ export default function MusicPlayer() {
 
   return (
     <div className="relative min-h-screen bg-black overflow-hidden">
-      <style jsx global>{`
-        @keyframes rotation {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
       <div 
         ref={scrollContainerRef}
         className="relative z-10 h-screen overflow-y-scroll scrollbar-hide"
@@ -388,7 +394,7 @@ export default function MusicPlayer() {
                       className="absolute inset-0 w-full h-full"
                       dangerouslySetInnerHTML={{ __html: album.cover }}
                     />
-                    <div className="absolute inset-0 bg-black opacity-45 group-hover:opacity-0 transition-opacity duration-300 ease-in-out"></div>
+                    <div className="absolute inset-0 bg-black opacity-55 group-hover:opacity-0 transition-opacity duration-300 ease-in-out"></div>
                   </div>
                 ))}
             </div>
@@ -396,7 +402,7 @@ export default function MusicPlayer() {
         </div>
       </div>
       <div className="fixed inset-0 z-20 flex items-center justify-center pointer-events-none">
-        <div ref={playerRef} className="w-96 h-96 bg-black bg-opacity-80 rounded-full flex items-center justify-center backdrop-blur-md pointer-events-auto shadow-lg" style={{ boxShadow: '0 0 30px rgba(0, 0, 0, 0.5)' }}>
+        <div ref={playerRef} className="w-96 h-96 bg-black bg-opacity-60 rounded-full flex items-center justify-center backdrop-blur-md pointer-events-auto shadow-lg" style={{ boxShadow: '0 0 30px rgba(0, 0, 0, 0.5)' }}>
           <div className="w-88 h-88 bg-gray-800 rounded-full flex items-center justify-center relative overflow-hidden">
             <div
               ref={albumCoverRef}
@@ -404,10 +410,9 @@ export default function MusicPlayer() {
               dangerouslySetInnerHTML={{ __html: currentAlbum?.cover || '' }}
               style={{ 
                 transform: `rotate(${rotation}deg)`,
-                transition: isPlaying ? 'none' : 'transform 0.5s ease-out'
+                transition: 'transform 0.1s linear'
               }}
             />
-            <div className="absolute inset-0 bg-black opacity-60"></div>
             <div
               className="absolute inset-0"
               style={{
@@ -431,7 +436,7 @@ export default function MusicPlayer() {
               </p>
               <div className="flex items-center space-x-6">
                 <button 
-                  className="text-white p-2 rounded-full bg-black relative group"
+                  className="text-white p-2 rounded-full bg-black relative group hover:bg-gray-800 transition-colors duration-300"
                   onClick={handlePrevious}
                   onMouseEnter={(e) => handleTooltipEnter(e, prevAlbum ? `${prevAlbum.name} - ${prevAlbum.artist}` : 'No previous track')}
                   onMouseLeave={handleTooltipLeave}
@@ -444,10 +449,10 @@ export default function MusicPlayer() {
                   onClick={togglePlay} 
                   aria-label={isPlaying ? "Pause" : "Play"}
                 >
-                  {isPlaying ? <Pause size={24} /> : <PlayIcon />}
+                  {isPlaying ? <Pause size={24} /> : <Play size={24} />}
                 </button>
                 <button 
-                  className="text-white p-2 rounded-full bg-black relative group"
+                  className="text-white p-2 rounded-full bg-black relative group hover:bg-gray-800 transition-colors duration-300"
                   onClick={handleNext}
                   onMouseEnter={(e) => handleTooltipEnter(e, nextAlbum ? `${nextAlbum.name} - ${nextAlbum.artist}` : 'No next track')}
                   onMouseLeave={handleTooltipLeave}
@@ -513,7 +518,7 @@ export default function MusicPlayer() {
           style={{
             left: `${tooltipContent.x}px`,
             top: `${tooltipContent.y}px`,
-            transform: 'translate(-50%, -100%)'
+            transform: 'translate(-50%, 0)'
           }}
         >
           {tooltipContent.text}
